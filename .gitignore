@@ -1,0 +1,14 @@
+app1.py
+extraction.py
+extractmsgfile.py
+MSG Format in EMAIL Form.eml
+msgreader.py
+part-000.msg
+preprocessed_image003.png
+email_attachments/
+uploaded/
+vir/
+.env
+.venv/
+__pycache__/
+extract_text_wordpdf_copy.py
