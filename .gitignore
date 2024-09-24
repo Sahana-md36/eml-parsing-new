@@ -12,3 +12,5 @@ vir/
 .venv/
 __pycache__/
 extract_text_wordpdf_copy.py
+extraction.py
+temp.docx

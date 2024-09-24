@@ -9,6 +9,7 @@ from flask_cors import CORS
 from extract_text_wordpdf import (
     extract_doc,
     process_pdf,
+    process_pdf_upload,
     extract_text_from_txt,
     extract_text_from_image,
     extract_text_from_csv,
@@ -171,10 +172,11 @@ def upload_file():
         os.makedirs('uploaded', exist_ok=True)
         file.save(pdf_file_name)
     
+    # Open the PDF file in binary mode and read its content
         with open(pdf_file_name, 'rb') as pdf_file:
             pdf_data = pdf_file.read()
     
-        result = process_pdf(pdf_data)
+        result = process_pdf_upload(pdf_data)  # Pass the binary data to process_pdf
         return jsonify({"result": result})
 
     

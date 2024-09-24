@@ -69,7 +69,7 @@ requests-oauthlib==2.0.0
 scikit-image==0.23.2
 scipy==1.13.1
 shapely==2.0.4
-six==1.12.0
+six==1.16.0
 sortedcontainers==2.4.0
 soupsieve==2.5
 SpeechRecognition==3.8.1

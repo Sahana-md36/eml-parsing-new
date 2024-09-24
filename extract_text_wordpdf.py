@@ -24,46 +24,137 @@ form_recognizer_key = os.getenv('AZURE_FORM_RECOGNIZER_KEY')
 form_recognizer_endpoint = os.getenv('AZURE_FORM_RECOGNIZER_ENDPOINT')
 form_recognizer_client = DocumentAnalysisClient(form_recognizer_endpoint, AzureKeyCredential(form_recognizer_key))
 
-def extract_doc(docx_data):
-    """Extract text from DOCX file content."""
-    with open("temp.docx", "wb") as f:
-        f.write(docx_data)
-    output = pypandoc.convert_file("temp.docx", 'rst')
-    os.remove("temp.docx")
+def extract_doc(file_name):
+    output = pypandoc.convert_file(file_name, 'rst')
     return output
 
-def extract_text_from_txt(txt_data):
-    """Extract text from a TXT file."""
-    return txt_data.decode('utf-8')
 
-def extract_text_from_csv(csv_data):
+def extract_text_from_txt(file_path):
+    """Extract text from a txt file"""
+    with open(file_path, 'r') as txt_file:
+        txt_text = txt_file.read()
+    return txt_text
+
+def extract_text_from_csv(file_path):
     """Extract text from a CSV file."""
     try:
-        df = pd.read_csv(BytesIO(csv_data))
-        return df.to_string(index=False)
+        df = pd.read_csv(file_path)
+        text = df.to_string(index=False)
+        return text
     except Exception as e:
         print(f"Error extracting text from CSV: {e}")
         return ""
 
-def extract_text_from_xlsx(xlsx_data):
+def extract_text_from_xlsx(file_path):
     """Extract text from an XLSX file."""
     try:
-        df = pd.read_excel(BytesIO(xlsx_data))
-        return df.to_string(index=False)
+        df = pd.read_excel(file_path)
+        text = df.to_string(index=False)
+        return text
     except Exception as e:
         print(f"Error extracting text from XLSX: {e}")
         return ""
 
-def extract_text_from_html(html_data):
+def extract_text_from_html(file_path):
     """Extract text from an HTML file."""
     try:
-        soup = BeautifulSoup(html_data, 'html.parser')
-        return soup.get_text()
+        with open(file_path, 'r') as html_file:
+            soup = BeautifulSoup(html_file, 'html.parser')
+            text = soup.get_text()
+        return text
     except Exception as e:
         print(f"Error extracting text from HTML: {e}")
         return ""
 
-def extract_text_from_pdf(pdf_data):
+
+#For regular pdfs or attachments
+def extract_pdf_text(file_path):
+    """Extract text from a PDF file."""
+    doc = fitz.open(file_path)
+    full_text = ""
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+        text = page.get_text()
+        full_text += text
+    return full_text
+
+def convert_pdf_to_images(file_path):
+    """Convert PDF pages to images."""
+    doc = fitz.open(file_path)
+    image_paths = []
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+        pix = page.get_pixmap()
+        image_path = f"page_{page_num + 1}.png"
+        pix.save(image_path)
+        image_paths.append(image_path)
+    return image_paths
+
+def extract_text_from_image(image_path):
+    """Extract text from an image file using Azure Vision OCR."""
+    try:
+        with open(image_path, "rb") as image_stream:
+            ocr_result = computervision_client.read_in_stream(image_stream, raw=True)
+        
+        operation_location = ocr_result.headers["Operation-Location"]
+        operation_id = operation_location.split("/")[-1]
+
+        while True:
+            result = computervision_client.get_read_result(operation_id)
+            if result.status not in ['notStarted', 'running']:
+                break
+            time.sleep(1)
+
+        if result.status == OperationStatusCodes.succeeded:
+            text = ""
+            for read_result in result.analyze_result.read_results:
+                for line in read_result.lines:
+                    text += line.text + " "
+            return text
+        else:
+            print("Sorry, the image quality is not sufficient for text extraction. Please try again with a clearer image.")
+            return ""
+    except Exception as e:
+        print("Image is invalid for text extraction.")
+        return ""
+
+def is_text_based_pdf(file_path):
+    """Check if a PDF file is text-based or scanned."""
+    doc = fitz.open(file_path)
+    for page_num in range(len(doc)):
+        page = doc.load_page(page_num)
+        text = page.get_text()
+        if text.strip():
+            return True
+    return False
+
+def process_pdf(file_path):
+    """Process the PDF file to extract text."""
+    if not file_path.lower().endswith('.pdf'):
+        raise ValueError("The provided file is not a PDF.")
+
+    if is_text_based_pdf(file_path):
+        print("The PDF is text-based. Extracting text...")
+        return extract_pdf_text(file_path)
+    else:
+        print("The PDF contains scanned images. Performing OCR...")
+        try:
+            image_paths = convert_pdf_to_images(file_path)
+            full_text = ""
+            for image_path in image_paths:
+                text = extract_text_from_image(image_path)
+                full_text += text
+                os.remove(image_path)
+            return full_text
+        except Exception as e:
+            print("Sorry, the image quality is not sufficient for text extraction. Please try again with a clearer image.")
+            return ""
+        
+
+
+#For direct pdfs
+
+def extract_text_from_pdf_upload(pdf_data):
     """Extract text from a PDF file."""
     doc = fitz.open(stream=pdf_data, filetype="pdf")
     full_text = ""
@@ -72,7 +163,7 @@ def extract_text_from_pdf(pdf_data):
         full_text += page.get_text()
     return full_text
 
-def is_text_based_pdf(pdf_data):
+def is_text_based_pdf_upload(pdf_data):
     """Check if a PDF file is text-based or scanned."""
     doc = fitz.open(stream=pdf_data, filetype="pdf")
     for page_num in range(len(doc)):
@@ -81,8 +172,7 @@ def is_text_based_pdf(pdf_data):
             return True
     return False
 
-
-def convert_pdf_to_images(pdf_data):
+def convert_pdf_to_images_upload(pdf_data):
     """Convert PDF pages to images with higher DPI for better OCR results."""
     doc = fitz.open(stream=pdf_data, filetype="pdf")
     image_paths = []
@@ -94,7 +184,7 @@ def convert_pdf_to_images(pdf_data):
         image_paths.append(image_path)
     return image_paths
 
-def extract_text_from_image(image_path):
+def extract_text_from_image_upload(image_path):
     """Extract text from an image file using Azure Vision OCR."""
     try:
         with open(image_path, "rb") as image_stream:
@@ -122,7 +212,7 @@ def extract_text_from_image(image_path):
         print(f"Image is invalid for text extraction: {e}")
         return ""
 
-def extract_selection_marks_and_text(pdf_data):
+def extract_selection_marks_and_text_upload(pdf_data):
     """Extract selection marks and text lines from the document."""
     try:
         poller = form_recognizer_client.begin_analyze_document("prebuilt-document", pdf_data)
@@ -152,7 +242,7 @@ def extract_selection_marks_and_text(pdf_data):
         print(f"Error extracting selection marks and text: {e}")
         return [], []
 
-def associate_checkboxes_with_options(selection_marks, text_lines):
+def associate_checkboxes_with_options_upload(selection_marks, text_lines):
     """Associate checkboxes with their nearest text options."""
     checkboxes = []
 
@@ -161,6 +251,7 @@ def associate_checkboxes_with_options(selection_marks, text_lines):
         min_distance = float('inf')
         for line in text_lines:
             if line["Page"] == selection_mark["Page"]:
+                # Calculate the distance between the selection mark and the line
                 line_center_x = sum([point[0] for point in line["Polygon"]]) / len(line["Polygon"])
                 line_center_y = sum([point[1] for point in line["Polygon"]]) / len(line["Polygon"])
                 selection_mark_center_x = sum([point[0] for point in selection_mark["Polygon"]]) / len(selection_mark["Polygon"])
@@ -185,9 +276,10 @@ def format_checkboxes_as_json(checkboxes):
 def analyze_document_with_form_recognizer(pdf_data):
     """Analyze the PDF document using Azure Form Recognizer to extract tables and checkboxes."""
     try:
-        selection_marks, text_lines = extract_selection_marks_and_text(pdf_data)
-        checkboxes = associate_checkboxes_with_options(selection_marks, text_lines)
+        selection_marks, text_lines = extract_selection_marks_and_text_upload(pdf_data)
+        checkboxes = associate_checkboxes_with_options_upload(selection_marks, text_lines)
 
+        # Extract tables (as done previously)
         poller = form_recognizer_client.begin_analyze_document("prebuilt-document", pdf_data)
         result = poller.result()
 
@@ -196,7 +288,7 @@ def analyze_document_with_form_recognizer(pdf_data):
             table_data = []
             for cell in table.cells:
                 while len(table_data) <= cell.row_index:
-                    table_data.append([""] * table.column_count)
+                    table_data.append([""] * table.column_count)  # Pre-fill the row
                 table_data[cell.row_index][cell.column_index] = cell.content
             tables.append(table_data)
 
@@ -214,12 +306,12 @@ def analyze_document_with_form_recognizer(pdf_data):
 
 
 
-def process_pdf(pdf_data):
+def process_pdf_upload(pdf_data):
     """Process the PDF file to extract text, tables, and checkboxes."""
     try:
-        if is_text_based_pdf(pdf_data):
+        if is_text_based_pdf_upload(pdf_data):
             print("The PDF is text-based. Extracting text and analyzing for tables and checkboxes...")
-            text = extract_text_from_pdf(pdf_data)
+            text = extract_text_from_pdf_upload(pdf_data)
             analysis_results = analyze_document_with_form_recognizer(pdf_data)
             return {
                 "text": text,
@@ -228,10 +320,10 @@ def process_pdf(pdf_data):
             }
         else:
             print("The PDF contains scanned images. Performing OCR and analyzing for tables and checkboxes...")
-            image_paths = convert_pdf_to_images(pdf_data)
+            image_paths = convert_pdf_to_images_upload(pdf_data)
             full_text = ""
             for image_path in image_paths:
-                text = extract_text_from_image(image_path)
+                text = extract_text_from_image_upload(image_path)
                 full_text += text
                 os.remove(image_path)
 
@@ -244,6 +336,7 @@ def process_pdf(pdf_data):
     except Exception as e:
         print(f"Error during PDF processing: {e}")
         return {}
+
 
 def extract_text_from_attachment(attachment):
     """Extract text content from an attachment."""
