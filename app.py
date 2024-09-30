@@ -14,7 +14,7 @@ from extract_text_wordpdf import (
     extract_text_from_image,
     extract_text_from_csv,
     extract_text_from_xlsx,
-    extract_text_from_html
+    extract_text_from_html,process_image_jpg
 )
 from extract_emailbody import read_email
 from extractmsg import extract_text_from_msg
@@ -88,7 +88,9 @@ def parse_email(eml_file_name, output_folder_path='email_attachments'):
             
             elif file_name.endswith('.pdf'):
                 print(f"Extracting text from pdf file: {file_name}")
-                pdf_text = process_pdf(file_path)
+                with open(file_path, 'rb') as pdf_file:
+                    pdf_data = pdf_file.read()
+                pdf_text = process_pdf_upload(pdf_data)
                 parsed_attachments.append({'filename': file_name, 'filetype': filetype, 'content': pdf_text if pdf_text else 'Invalid attachment'})
 
             elif file_name.endswith('.txt'):
@@ -113,7 +115,9 @@ def parse_email(eml_file_name, output_folder_path='email_attachments'):
 
             elif file_name.endswith('.jpg') or file_name.endswith('.jpeg') or file_name.endswith('.png'):
                 print(f"Extracting text from image file: {file_name}")
-                image_text = extract_text_from_image(file_path)
+                # with open(file_path, 'rb') as image_file:
+                #     image_data = image_file.read()
+                image_text = process_image_jpg(file_path)
                 parsed_attachments.append({'filename': file_name, 'filetype': filetype, 'content': image_text if image_text else 'Poor quality image or invalid attachment'})
 
             elif file_name.startswith('part-000'):
