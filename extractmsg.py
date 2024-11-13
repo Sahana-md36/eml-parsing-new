@@ -193,6 +193,53 @@ def extract_text_from_attachment(attachment):
         return base64.b64encode(file_data).decode('utf-8')
 
 
+# def extract_text_from_msg(file_path):
+#     """Extract text content and attachments from an MSG file."""
+#     try:
+#         msg = extract_msg.Message(file_path)
+#         attachments = []
+
+#         for attachment in msg.attachments:
+#             file_name = attachment.longFilename if attachment.longFilename else attachment.shortFilename
+#             _, file_extension = os.path.splitext(file_name.lower())
+#             if file_extension in ['.jpg', '.jpeg', '.png']:
+#                 continue
+            
+#             attachment_info = {
+#                 "filename": file_name,
+#                 "content": extract_text_from_attachment(attachment),
+#                 "filetype": file_extension[1:]
+#             }
+#             attachments.append(attachment_info)
+
+#         return {
+#             "Subject": msg.subject,
+#             "From": msg.sender,
+#             "To": msg.to,
+#             "Date": msg.date,
+#             "Body": msg.body,
+#             "Attachments": attachments
+#         }
+#     except Exception as e:
+#         print(f"Error extracting details from MSG: {e}")
+#         return {"error": "Invalid attachment or MSG file."}
+    
+    
+
+# def extract_attachment(file_path):
+#     try:
+#         with open(file_path, 'rb') as f:
+#             msg = extract_msg(f)
+#             return msg.body  
+#     except Exception as e:
+#         print("Error:", e)
+#         return None
+
+import os
+import extract_msg
+from extract_text_from_doc import extract_text_from_doc
+from extract_text_wordpdf import process_pdf_upload, extract_doc
+
 def extract_text_from_msg(file_path):
     """Extract text content and attachments from an MSG file."""
     try:
@@ -202,12 +249,17 @@ def extract_text_from_msg(file_path):
         for attachment in msg.attachments:
             file_name = attachment.longFilename if attachment.longFilename else attachment.shortFilename
             _, file_extension = os.path.splitext(file_name.lower())
+            
+            # Skip image files
             if file_extension in ['.jpg', '.jpeg', '.png']:
                 continue
             
+            # Save attachment content based on type
+            attachment_content = extract_text_from_attachment(attachment, file_name)
+            
             attachment_info = {
                 "filename": file_name,
-                "content": extract_text_from_attachment(attachment),
+                "content": attachment_content,
                 "filetype": file_extension[1:]
             }
             attachments.append(attachment_info)
@@ -223,14 +275,38 @@ def extract_text_from_msg(file_path):
     except Exception as e:
         print(f"Error extracting details from MSG: {e}")
         return {"error": "Invalid attachment or MSG file."}
-    
-    
 
-def extract_attachment(file_path):
+
+def extract_text_from_attachment(attachment, file_name):
+    """Extract text content from an attachment based on file type."""
+    # Determine file extension for appropriate processing
+    _, file_extension = os.path.splitext(file_name.lower())
+    
+    # Save attachment to a temporary path for processing
+    temp_path = os.path.join('temp_attachments', file_name)
+    os.makedirs('temp_attachments', exist_ok=True)
+    with open(temp_path, 'wb') as f:
+        f.write(attachment.data)
+    
     try:
-        with open(file_path, 'rb') as f:
-            msg = extract_msg(f)
-            return msg.body  
+        # Process based on file extension
+        if file_extension == '.doc':
+            return extract_text_from_doc(temp_path) # Use your existing .doc extraction function
+        elif file_extension == '.docx':
+            return extract_doc(temp_path)
+        elif file_extension == '.pdf':
+            return process_pdf_upload(attachment.data)  # Use PDF processing function
+        elif file_extension == '.txt':
+            with open(temp_path, 'r') as txt_file:
+                return txt_file.read()
+        # Add additional processing for other file types if necessary
+        else:
+            return "Unsupported file type"
     except Exception as e:
-        print("Error:", e)
-        return None
+        print(f"Error processing attachment {file_name}: {e}")
+        return "Invalid attachment"
+    finally:
+        # Clean up temporary file
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+

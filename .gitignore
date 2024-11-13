@@ -6,6 +6,7 @@ msgreader.py
 part-000.msg
 preprocessed_image003.png
 email_attachments/
+temp_attachments/
 uploaded/
 vir/
 .env
