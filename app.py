@@ -3,23 +3,24 @@ import datetime
 import email
 import email.header
 import os
+import re
 import eml_parser
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from extract_text_wordpdf import (
     extract_doc,
-    process_pdf,
     process_pdf_upload,
     extract_text_from_txt,
-    extract_text_from_image,
     extract_text_from_csv,
     extract_text_from_xlsx,
-    extract_text_from_html,process_image_jpg
+    extract_text_from_html, process_image_jpg
 )
 from extract_emailbody import read_email
 from extractmsg import extract_text_from_msg
 from extract_msg_body import read_email_content
 from extract_text_from_doc import extract_text_from_doc
+from bs4 import BeautifulSoup
+import requests
 
 app = Flask(__name__)
 CORS(app)
@@ -35,6 +36,54 @@ def json_serial(obj):
         return obj.decode('utf-8', errors='ignore')
     raise TypeError(f'Type "{str(type(obj))}" not serializable')
 
+def extract_links_from_html(body):
+    """Extracts hyperlinks from anchor elements in the email body."""
+    soup = BeautifulSoup(body, 'html.parser')
+    links = []
+
+    # Find all anchor tags that contain a hyperlink
+    for button in soup.find_all('a', href=True):
+        links.append(clean_url(button['href']))
+
+    return links
+
+def extract_links_from_text(body):
+    """Extracts all valid URLs from plain text using regular expressions."""
+    url_pattern = re.compile(r'https?://[^\s]+')
+    return url_pattern.findall(body)
+
+def clean_url(url):
+    """Cleans a URL by removing trailing unwanted characters such as > or ] if they exist."""
+    return url.rstrip('>').rstrip(']')
+
+def clean_filetype(filetype):
+    """Cleans the file type by removing any unwanted characters such as '>' or '<'."""
+    return filetype.split('?')[0].split('#')[0].strip('.').lower()  # Clean and extract file extension
+
+def process_external_link(url):
+    """Fetches the URL content and extracts text based on document type."""
+    # Send GET request to the URL
+    response = requests.get(url)
+    content_type = response.headers.get('Content-Type')
+
+    # Based on the content type, handle different document formats
+    if 'pdf' in content_type:
+        pdf_text = process_pdf_upload(response.content)  # Process PDF content
+        return pdf_text
+    elif 'html' in content_type:
+        html_text = extract_text_from_html(response.content)  # Process HTML content
+        return html_text
+    elif 'doc' in content_type or 'docx' in content_type:
+        docx_text = extract_doc(response.content)  # Process DOCX content
+        return docx_text
+    elif 'csv' in content_type:
+        csv_text = extract_text_from_csv(response.content)  # Process CSV content
+        return csv_text
+    elif 'txt' in content_type:
+        return response.text  # Text content directly
+    else:
+        return 'Unsupported document format'
+    
 def parse_email(eml_file_name, output_folder_path='email_attachments'):
     def clear_output_folder(path):
         """Clears the output folder to remove previous attachments"""
@@ -53,7 +102,6 @@ def parse_email(eml_file_name, output_folder_path='email_attachments'):
             m = ep.decode_email_bytes(f.read())
         attachments = []
 
-        # For regular attachments
         if 'attachment' in m:
             for a in m['attachment']:
                 out_filepath = os.path.join(output_folder_path, a['filename'])
@@ -115,8 +163,6 @@ def parse_email(eml_file_name, output_folder_path='email_attachments'):
 
             elif file_name.endswith('.jpg') or file_name.endswith('.jpeg') or file_name.endswith('.png'):
                 print(f"Extracting text from image file: {file_name}")
-                # with open(file_path, 'rb') as image_file:
-                #     image_data = image_file.read()
                 image_text = process_image_jpg(file_path)
                 parsed_attachments.append({'filename': file_name, 'filetype': filetype, 'content': image_text if image_text else 'Poor quality image or invalid attachment'})
 
@@ -133,13 +179,45 @@ def parse_email(eml_file_name, output_folder_path='email_attachments'):
             print(f"Error parsing {file_name}: {e}")
             parsed_attachments.append({'filename': file_name, 'filetype': filetype, 'content': 'Invalid attachment'})
 
+    # Extract the email body
     email_details = read_email(eml_file_name)
 
     if 'Body' not in email_details or not email_details['Body'].strip():
         email_details['Body'] = 'Unavailable'
 
-    email_details['Attachments'] = parsed_attachments if parsed_attachments else []
+    # Extract links from email body
+    links = extract_links_from_text(email_details['Body'])
+    extracted_links_content = []
+    hyperlink_counter = 1  # Initialize counter for hyperlink filenames
 
+    # For each link found, fetch content and store it
+    for link in links:
+        print(f"Processing link: {link}")
+        link_content = process_external_link(link)
+        
+        if link_content and link_content != "Unsupported document format":
+            # Extract the file type from the link
+            filetype = link.split('.')[-1].lower()  # Default filetype extraction using extension
+            
+            # Clean the filetype to avoid unwanted characters
+            filetype = clean_filetype(filetype)
+            filetype = filetype.replace('>', '')
+            
+            extracted_links_content.append({
+                "filename": f"hyperlink-{hyperlink_counter}",
+                "filetype": filetype,
+                "content": link_content
+            })
+            hyperlink_counter += 1  # Increment hyperlink counter
+
+    # If ButtonLinksContent has any data, move it to Attachments
+    if extracted_links_content:
+        email_details['Attachments'] = extracted_links_content
+    else:
+        # No links found, add regular attachments
+        email_details['Attachments'] = parsed_attachments if parsed_attachments else []
+
+    # Final result to return
     print(f"Read email details: {email_details}")
     print(f"Parsed document text: {parsed_attachments}")
 
