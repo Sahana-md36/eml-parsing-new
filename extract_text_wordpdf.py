@@ -192,7 +192,8 @@ def extract_text_from_pdf_upload(pdf_data):
     full_text = ""
     for page_num in range(len(doc)):
         page = doc.load_page(page_num)
-        full_text += page.get_text()
+        #full_text += page.get_text()
+        full_text += page.get_text("layout")
     return full_text
 
 def is_text_based_pdf_upload(pdf_data):
@@ -216,12 +217,11 @@ def convert_pdf_to_images_upload(pdf_data):
         image_paths.append(image_path)
     return image_paths
 
-
 def extract_text_from_image_upload(image_path):
     """Extract text from an image file using Azure Vision OCR."""
     try:
         with open(image_path, "rb") as image_stream:
-            ocr_result = computervision_client.read_in_stream(image_stream, raw=True)
+            ocr_result = computervision_client.read_in_stream(image_stream,reading_order="natural", raw=True)
 
         operation_location = ocr_result.headers["Operation-Location"]
         operation_id = operation_location.split("/")[-1]
