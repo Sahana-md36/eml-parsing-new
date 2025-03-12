@@ -223,14 +223,84 @@ def parse_email(eml_file_name, output_folder_path='email_attachments'):
 
     return email_details
 
+def clean_text(text):
+    """Removes excessive newlines and formats the text properly."""
+    if isinstance(text, dict):  # If text is a dictionary, process all string values
+        return {key: clean_text(value) for key, value in text.items()}
+    elif isinstance(text, list):  # If it's a list, clean each item
+        return [clean_text(item) for item in text]
+    elif isinstance(text, str):  # If it's a string, clean it
+        # Remove all newline characters and replace with a space
+        text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+        # Remove excessive spaces
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+    return text  # Return non-string values as they are
+
+
+
 @app.route("/")
 def home():
     return "EML file parsing API"
+
+# @app.route('/upload', methods=['POST'])
+# def upload_file():
+#     if 'file' not in request.files:
+#         return jsonify({"error": "No file found"})
+#     file = request.files['file']
+#     if file.filename == '':
+#         return jsonify({"error": "File not uploaded"})
+
+#     if file and file.filename.endswith('.eml'):
+#         eml_file_name = os.path.join('uploaded', file.filename)
+#         os.makedirs('uploaded', exist_ok=True)
+#         file.save(eml_file_name)
+#         result = parse_email(eml_file_name)
+#         #return jsonify(result)
+#         return jsonify({"result": clean_text(result)})
+
+
+#     elif file and file.filename.endswith('.msg'):
+#         msg_file_name = os.path.join('uploaded', file.filename)
+#         os.makedirs('uploaded', exist_ok=True)
+#         file.save(msg_file_name)
+#         result = extract_text_from_msg(msg_file_name)
+#         #return jsonify({"result": result})
+#         return jsonify({"result": clean_text(result)})
+
+
+#     elif file and file.filename.endswith('.pdf'):
+#         pdf_file_name = os.path.join('uploaded', file.filename)
+#         os.makedirs('uploaded', exist_ok=True)
+#         file.save(pdf_file_name)
+    
+#     # Open the PDF file in binary mode and read its content
+#         with open(pdf_file_name, 'rb') as pdf_file:
+#             pdf_data = pdf_file.read()
+    
+#         result = process_pdf_upload(pdf_data)  # Pass the binary data to process_pdf
+#         #return jsonify({"result": result})
+#         return jsonify({"result": clean_text(result)})
+
+
+    
+#     elif file and file.filename.endswith('.doc'):
+#         doc_file_name = os.path.join('uploaded', file.filename)
+#         os.makedirs('uploaded', exist_ok=True)
+#         file.save(doc_file_name)
+#         result = extract_text_from_doc(doc_file_name)
+#         #return jsonify({"result": result})
+#         return jsonify({"result": clean_text(result)})
+
+
+#     else:
+#         return jsonify({"error": "Unsupported file type"})
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
     if 'file' not in request.files:
         return jsonify({"error": "No file found"})
+    
     file = request.files['file']
     if file.filename == '':
         return jsonify({"error": "File not uploaded"})
@@ -240,37 +310,41 @@ def upload_file():
         os.makedirs('uploaded', exist_ok=True)
         file.save(eml_file_name)
         result = parse_email(eml_file_name)
-        return jsonify(result)
+        # Apply clean_text function to ensure all newlines are removed
+        cleaned_result = clean_text(result)
+        return jsonify({"result": cleaned_result})
 
     elif file and file.filename.endswith('.msg'):
         msg_file_name = os.path.join('uploaded', file.filename)
         os.makedirs('uploaded', exist_ok=True)
         file.save(msg_file_name)
         result = extract_text_from_msg(msg_file_name)
-        return jsonify({"result": result})
+        cleaned_result = clean_text(result)
+        return jsonify({"result": cleaned_result})
 
     elif file and file.filename.endswith('.pdf'):
         pdf_file_name = os.path.join('uploaded', file.filename)
         os.makedirs('uploaded', exist_ok=True)
         file.save(pdf_file_name)
-    
-    # Open the PDF file in binary mode and read its content
+
         with open(pdf_file_name, 'rb') as pdf_file:
             pdf_data = pdf_file.read()
-    
-        result = process_pdf_upload(pdf_data)  # Pass the binary data to process_pdf
-        return jsonify({"result": result})
 
-    
+        result = process_pdf_upload(pdf_data)
+        cleaned_result = clean_text(result)
+        return jsonify({"result": cleaned_result})
+
     elif file and file.filename.endswith('.doc'):
         doc_file_name = os.path.join('uploaded', file.filename)
         os.makedirs('uploaded', exist_ok=True)
         file.save(doc_file_name)
         result = extract_text_from_doc(doc_file_name)
-        return jsonify({"result": result})
+        cleaned_result = clean_text(result)
+        return jsonify({"result": cleaned_result})
 
     else:
         return jsonify({"error": "Unsupported file type"})
+
 
 if __name__ == '__main__':
     app.run(debug=True)
